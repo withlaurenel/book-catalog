@@ -14,7 +14,9 @@ import {
 const SUPABASE_URL = "https://tckzajwiyhwvpietvavc.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_KKsXNjm4sVsoypZXGyTR4A_C9WIezDF";
 
-const SB_CONFIGURED = !!SUPABASE_URL && !!SUPABASE_ANON_KEY && SUPABASE_URL.startsWith("https://");
+const SB_CONFIGURED =
+  !SUPABASE_URL.includes("YOUR-PROJECT-REF") &&
+  !SUPABASE_ANON_KEY.includes("YOUR-SUPABASE-ANON-KEY");
 
 async function sbFetch(path, options = {}) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1${path}`, {
@@ -1100,11 +1102,6 @@ export default function App() {
                 <BookCover book={b} />
                 <div className="title">{b.title}</div>
                 <div className="author">{b.author}</div>
-                <div className="badges">
-                  <span className={`dot ${b.readStatus.toLowerCase()}`} />
-                  {b.rating > 0 && <span style={{ fontSize: 10, color: "#83715B" }}>{b.rating}★</span>}
-                  {b.loaned && <span style={{ fontSize: 9, color: "#B4553F" }}>on loan</span>}
-                </div>
               </button>
             ))}
           </div>

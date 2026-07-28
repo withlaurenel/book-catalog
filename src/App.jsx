@@ -328,11 +328,15 @@ function BookCover({ book, size = "normal" }) {
 function CameraScanner({ onDetected, onManualFallback, onClose }) {
   const videoRef = useRef(null);
   const readerRef = useRef(null);
+  const onDetectedRef = useRef(onDetected);
+  onDetectedRef.current = onDetected; // always call the latest without re-running the effect below
+
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
+    let stopped = false;
 
     (async () => {
       try {
@@ -344,20 +348,26 @@ function CameraScanner({ onDetected, onManualFallback, onClose }) {
           { video: { facingMode: "environment" } },
           videoRef.current,
           (result) => {
-            if (result && !cancelled) {
+            if (result && !cancelled && !stopped) {
               const text = result.getText();
               // book barcodes are EAN-13 (ISBN-13); keep digits only
               const digits = text.replace(/[^0-9]/g, "");
               if (digits.length >= 9) {
-                controls.stop();
-                onDetected(digits);
+                stopped = true;
+                try { controls.stop(); } catch (e) { /* ignore */ }
+                onDetectedRef.current(digits);
               }
             }
           }
         );
         readerRef.current._controls = controls;
-        if (!cancelled) setStarting(false);
+        if (cancelled) {
+          try { controls.stop(); } catch (e) { /* ignore */ }
+        } else {
+          setStarting(false);
+        }
       } catch (e) {
+        console.error("Camera scanner failed to start:", e);
         if (!cancelled) {
           setStarting(false);
           setError(
@@ -375,7 +385,7 @@ function CameraScanner({ onDetected, onManualFallback, onClose }) {
         readerRef.current && readerRef.current._controls && readerRef.current._controls.stop();
       } catch (e) { /* ignore */ }
     };
-  }, [onDetected]);
+  }, []); // run exactly once per mount — restarting this on every render breaks the camera
 
   return (
     <div className="scan-panel">
@@ -668,6 +678,9 @@ export default function App() {
   const [statusFilter, setStatusFilter] = useState("All");
   const [ownerFilter, setOwnerFilter] = useState("All");
   const [authorFilter, setAuthorFilter] = useState("");
+  const [genreFilter, setGenreFilter] = useState("All");
+  const [formatFilter, setFormatFilter] = useState("All");
+  const [sortBy, setSortBy] = useState("dateAdded"); // dateAdded | titleAsc | authorAsc
 
   const [dbError, setDbError] = useState("");
 
@@ -739,11 +752,25 @@ export default function App() {
 
   const selectedBook = useMemo(() => books.find((b) => b.id === selectedId) || null, [books, selectedId]);
 
+  const allGenres = useMemo(() => {
+    const set = new Set();
+    books.forEach((b) => (b.genres || []).forEach((g) => g && set.add(g)));
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [books]);
+
+  const allFormats = useMemo(() => {
+    const set = new Set();
+    books.forEach((b) => b.format && set.add(b.format));
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [books]);
+
   const filtered = useMemo(() => {
     let list = [...books];
     if (authorFilter) list = list.filter((b) => b.author === authorFilter);
     if (statusFilter !== "All") list = list.filter((b) => b.readStatus === statusFilter);
     if (ownerFilter !== "All") list = list.filter((b) => (b.owner || "Hers") === ownerFilter);
+    if (genreFilter !== "All") list = list.filter((b) => (b.genres || []).includes(genreFilter));
+    if (formatFilter !== "All") list = list.filter((b) => (b.format || "") === formatFilter);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter((b) =>
@@ -753,8 +780,15 @@ export default function App() {
         (b.tags || []).some((t) => t.toLowerCase().includes(q))
       );
     }
-    return list.sort((a, b) => (b.dateAdded || "").localeCompare(a.dateAdded || ""));
-  }, [books, search, statusFilter, ownerFilter, authorFilter]);
+    if (sortBy === "titleAsc") {
+      list.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+    } else if (sortBy === "authorAsc") {
+      list.sort((a, b) => (a.author || "").localeCompare(b.author || ""));
+    } else {
+      list.sort((a, b) => (b.dateAdded || "").localeCompare(a.dateAdded || ""));
+    }
+    return list;
+  }, [books, search, statusFilter, ownerFilter, authorFilter, genreFilter, formatFilter, sortBy]);
 
   const handleDetected = async (isbn) => {
     setPendingIsbn(isbn);
@@ -837,6 +871,13 @@ export default function App() {
           background: #FBFAF6; cursor: pointer; color: #6B5F4F;
         }
         .filter-chip.active { background: #8C9AA6; color: #FBFAF6; border-color: #8C9AA6; }
+        .sort-filter-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+        .sf-field { display: flex; flex-direction: column; gap: 3px; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: #8A7C64; flex: 1; min-width: 96px; }
+        .sf-field select {
+          font-family: inherit; font-size: 13px; color: #4A4033; background: #FBFAF6;
+          border: 1px solid #E2D8C6; border-radius: 8px; padding: 6px 8px; cursor: pointer;
+        }
+        .sf-field select:focus { outline: 2px solid #CE9A3E; outline-offset: 1px; }
         .author-filter-banner {
           margin: 0 16px 10px; padding: 8px 12px; background: #EFE6D3; border-radius: 8px;
           font-size: 13px; display: flex; justify-content: space-between; align-items: center;
@@ -1009,6 +1050,35 @@ export default function App() {
                   );
                 })}
               </div>
+            </div>
+
+            <div className="sort-filter-row">
+              <label className="sf-field">
+                <span>Sort</span>
+                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                  <option value="dateAdded">Recently added</option>
+                  <option value="titleAsc">Title (A–Z)</option>
+                  <option value="authorAsc">Author (A–Z)</option>
+                </select>
+              </label>
+              <label className="sf-field">
+                <span>Genre</span>
+                <select value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)}>
+                  <option value="All">All genres</option>
+                  {allGenres.map((g) => (
+                    <option key={g} value={g}>{g}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="sf-field">
+                <span>Format</span>
+                <select value={formatFilter} onChange={(e) => setFormatFilter(e.target.value)}>
+                  <option value="All">All formats</option>
+                  {allFormats.map((f) => (
+                    <option key={f} value={f}>{f}</option>
+                  ))}
+                </select>
+              </label>
             </div>
           </div>
 

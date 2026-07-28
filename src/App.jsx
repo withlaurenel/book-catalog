@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { BrowserMultiFormatReader } from "@zxing/browser";
 import {
   Search, Plus, X, Star, ChevronLeft, Loader2,
   BookOpen, User, Tag as TagIcon, Pencil, Trash2, Check,
@@ -340,7 +341,6 @@ function CameraScanner({ onDetected, onManualFallback, onClose }) {
 
     (async () => {
       try {
-        const { BrowserMultiFormatReader } = await import("@zxing/browser");
         const reader = new BrowserMultiFormatReader();
         readerRef.current = reader;
 
@@ -698,7 +698,7 @@ export default function App() {
         setDbError("");
       } catch (e) {
         console.error(e);
-        setDbError("Couldn't load your library from Supabase. Check your project URL/key and table setup.");
+        setDbError(`Couldn't load your library from Supabase: ${e.message || e}`);
       }
       setLoaded(true);
     })();
@@ -746,7 +746,7 @@ export default function App() {
       setDbError("");
     } catch (e) {
       console.error(e);
-      setDbError("Couldn't save to Supabase — your change is only kept locally for now.");
+      setDbError(`Couldn't save to Supabase: ${e.message || e}`);
     }
   };
 

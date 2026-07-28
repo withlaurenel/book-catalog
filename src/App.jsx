@@ -331,6 +331,8 @@ function BookCover({ book, size = "normal" }) {
     return (
       <img
         src={book.coverUrl}
+        loading="lazy"
+        decoding="async"
         alt={book.title}
         style={{ width: dims.w, aspectRatio: "2/3", objectFit: "cover", borderRadius: 3, display: "block" }}
         onError={(e) => { e.target.style.display = "none"; }}
@@ -826,6 +828,26 @@ export default function App() {
     return list;
   }, [books, search, statusFilter, ownerFilter, authorFilter, genreFilter, formatFilter, sortBy]);
 
+  // Group into alphabetical sections when sorted by title/author — only
+  // letters that actually have a book get a header (relies on `filtered`
+  // already being sorted, so matching letters are always contiguous).
+  const sections = useMemo(() => {
+    if (sortBy !== "titleAsc" && sortBy !== "authorAsc") return null;
+    const groups = [];
+    let current = null;
+    for (const b of filtered) {
+      const raw = (sortBy === "authorAsc" ? b.author : b.title) || "";
+      const ch = raw.trim().charAt(0).toUpperCase();
+      const letter = /[A-Z]/.test(ch) ? ch : "#";
+      if (!current || current.letter !== letter) {
+        current = { letter, books: [] };
+        groups.push(current);
+      }
+      current.books.push(b);
+    }
+    return groups;
+  }, [filtered, sortBy]);
+
   const handleDetected = async (isbn) => {
     setPendingIsbn(isbn);
     setLookupLoading(true);
@@ -930,6 +952,11 @@ export default function App() {
 
         .shelf-grid {
           display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding: 6px 16px 24px;
+        }
+        .shelf-section-header {
+          position: sticky; top: 0; z-index: 2; margin: 0 16px; padding: 5px 10px;
+          font-family: 'Inter', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 0.06em;
+          color: #FBFAF6; background: #6B7A47; border-radius: 6px; width: fit-content;
         }
         .book-card { cursor: pointer; text-align: left; }
         .dot { width: 6px; height: 6px; border-radius: 50%; }
@@ -1144,13 +1171,28 @@ export default function App() {
             </div>
           )}
 
-          <div className="shelf-grid">
-            {filtered.map((b) => (
-              <button key={b.id} className="book-card" onClick={() => { setSelectedId(b.id); setView("detail"); }} title={`${b.title} — ${b.author}`}>
-                <BookCover book={b} />
-              </button>
-            ))}
-          </div>
+          {sections ? (
+            sections.map((sec) => (
+              <div key={sec.letter} className="shelf-section">
+                <div className="shelf-section-header">{sec.letter}</div>
+                <div className="shelf-grid">
+                  {sec.books.map((b) => (
+                    <button key={b.id} className="book-card" onClick={() => { setSelectedId(b.id); setView("detail"); }} title={`${b.title} — ${b.author}`}>
+                      <BookCover book={b} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="shelf-grid">
+              {filtered.map((b) => (
+                <button key={b.id} className="book-card" onClick={() => { setSelectedId(b.id); setView("detail"); }} title={`${b.title} — ${b.author}`}>
+                  <BookCover book={b} />
+                </button>
+              ))}
+            </div>
+          )}
 
           <button className="fab" onClick={() => setView("addChoice")}><Plus size={20} /></button>
         </>

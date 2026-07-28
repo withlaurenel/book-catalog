@@ -14,9 +14,7 @@ import {
 const SUPABASE_URL = "https://tckzajwiyhwvpietvavc.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_KKsXNjm4sVsoypZXGyTR4A_C9WIezDF";
 
-const SB_CONFIGURED =
-  !SUPABASE_URL.includes("YOUR-PROJECT-REF") &&
-  !SUPABASE_ANON_KEY.includes("YOUR-SUPABASE-ANON-KEY");
+const SB_CONFIGURED = !!SUPABASE_URL && !!SUPABASE_ANON_KEY && SUPABASE_URL.startsWith("https://");
 
 async function sbFetch(path, options = {}) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1${path}`, {

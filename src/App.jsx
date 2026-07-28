@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-// (camera scanning library omitted in this preview build — unsupported by Claude's artifact sandbox; present in the real deployable file)
+import { BrowserMultiFormatReader } from "@zxing/browser";
 import {
   Search, Plus, X, Star, ChevronLeft, Loader2,
   BookOpen, User, Tag as TagIcon, Pencil, Trash2, Check,
@@ -377,9 +377,7 @@ function CameraScanner({ onDetected, onManualFallback, onClose }) {
 
     (async () => {
       try {
-        throw new Error("PREVIEW_ONLY_NO_CAMERA_LIB");
-        // eslint-disable-next-line no-unreachable
-        const reader = null;
+        const reader = new BrowserMultiFormatReader();
         readerRef.current = reader;
 
         const controls = await reader.decodeFromConstraints(

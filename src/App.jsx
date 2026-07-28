@@ -144,47 +144,55 @@ function resizeImageFile(file, maxDim = 640, quality = 0.82) {
 async function fetchBookData(isbnRaw) {
   const isbn = isbnRaw.replace(/[^0-9Xx]/g, "");
   if (!isbn) return null;
+
+  // Try Open Library first — free, no API key, CORS-enabled.
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 1000,
-        messages: [
-          {
-            role: "user",
-            content:
-              "Look up the published book with ISBN " + isbn + " using web search. " +
-              "Reply with ONLY a raw JSON object and nothing else — no markdown fences, no commentary — " +
-              'in exactly this shape: {"title": "", "author": "", "totalPages": 0, "genres": []}. ' +
-              "Use the book's real title and author(s) (comma-separated if more than one). " +
-              "For totalPages give your best number, or 0 if unknown. " +
-              "For genres give up to 4 short genre/subject words as an array, or an empty array if unknown.",
-          },
-        ],
-        tools: [{ type: "web_search_20250305", name: "web_search" }],
-      }),
-    });
-    const data = await res.json();
-    const textParts = (data.content || [])
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("\n");
-    const match = textParts.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    const parsed = JSON.parse(match[0]);
-    if (!parsed.title) return null;
-    return {
-      title: parsed.title || "",
-      author: parsed.author || "",
-      totalPages: parsed.totalPages || "",
-      genres: Array.isArray(parsed.genres) ? parsed.genres : [],
-      coverUrl: `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`,
-    };
-  } catch (e) {
-    return null;
-  }
+    const olRes = await fetch(
+      `https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`
+    );
+    if (olRes.ok) {
+      const olData = await olRes.json();
+      const book = olData[`ISBN:${isbn}`];
+      if (book && book.title) {
+        return {
+          title: book.title || "",
+          author: (book.authors || []).map((a) => a.name).join(", "),
+          totalPages: book.number_of_pages || "",
+          genres: (book.subjects || []).slice(0, 4).map((s) => s.name),
+          coverUrl:
+            (book.cover && (book.cover.large || book.cover.medium)) ||
+            `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`,
+        };
+      }
+    }
+  } catch (e) { /* fall through to Google Books */ }
+
+  // Fallback: Google Books — also free, no key needed for basic lookups.
+  try {
+    const gbRes = await fetch(
+      `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`
+    );
+    if (gbRes.ok) {
+      const gbData = await gbRes.json();
+      const item = gbData.items && gbData.items[0];
+      const vi = item && item.volumeInfo;
+      if (vi && vi.title) {
+        return {
+          title: vi.title || "",
+          author: (vi.authors || []).join(", "),
+          totalPages: vi.pageCount || "",
+          genres: (vi.categories || []).slice(0, 4),
+          coverUrl:
+            (vi.imageLinks && (vi.imageLinks.thumbnail || vi.imageLinks.smallThumbnail) || "").replace(
+              "http://",
+              "https://"
+            ) || `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`,
+        };
+      }
+    }
+  } catch (e) { /* nothing found */ }
+
+  return null;
 }
 
 function blankBook(isbn = "") {
@@ -311,6 +319,80 @@ function BookCover({ book, size = "normal" }) {
       <span style={{ color: "#fff", fontFamily: "'Louize', serif", fontSize: size === "small" ? 9 : 13, lineHeight: 1.15, fontWeight: 600 }}>
         {book.title || "Untitled"}
       </span>
+    </div>
+  );
+}
+
+/* ---------- camera barcode scanner ---------- */
+
+function CameraScanner({ onDetected, onManualFallback, onClose }) {
+  const videoRef = useRef(null);
+  const readerRef = useRef(null);
+  const [error, setError] = useState("");
+  const [starting, setStarting] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { BrowserMultiFormatReader } = await import("@zxing/browser");
+        const reader = new BrowserMultiFormatReader();
+        readerRef.current = reader;
+
+        const controls = await reader.decodeFromConstraints(
+          { video: { facingMode: "environment" } },
+          videoRef.current,
+          (result) => {
+            if (result && !cancelled) {
+              const text = result.getText();
+              // book barcodes are EAN-13 (ISBN-13); keep digits only
+              const digits = text.replace(/[^0-9]/g, "");
+              if (digits.length >= 9) {
+                controls.stop();
+                onDetected(digits);
+              }
+            }
+          }
+        );
+        readerRef.current._controls = controls;
+        if (!cancelled) setStarting(false);
+      } catch (e) {
+        if (!cancelled) {
+          setStarting(false);
+          setError(
+            e && e.name === "NotAllowedError"
+              ? "Camera access was denied. You can still enter the ISBN by hand below."
+              : "Couldn't start the camera on this device. You can still enter the ISBN by hand below."
+          );
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      try {
+        readerRef.current && readerRef.current._controls && readerRef.current._controls.stop();
+      } catch (e) { /* ignore */ }
+    };
+  }, [onDetected]);
+
+  return (
+    <div className="scan-panel">
+      <div className="scan-video-wrap quagga-target">
+        <video ref={videoRef} muted playsInline style={{ width: "100%", borderRadius: 10, background: "#111" }} />
+        {!error && <div className="scan-line" />}
+      </div>
+      {starting && !error && <p className="scan-hint">Starting camera…</p>}
+      {!starting && !error && <p className="scan-hint">Point your camera at the barcode on the back of the book</p>}
+      {error && (
+        <div className="scan-fallback-note">
+          <AlertCircle size={15} color="#8A5A2E" style={{ flexShrink: 0, marginTop: 1 }} />
+          <span>{error}</span>
+        </div>
+      )}
+      <button className="btn-text" onClick={onManualFallback}>Type the ISBN instead</button>
+      <button className="btn-text" onClick={onClose}>Cancel</button>
     </div>
   );
 }
@@ -971,6 +1053,13 @@ export default function App() {
             <h2>Add a book</h2>
           </div>
           <div className="add-choice">
+            <button className="choice-card" onClick={() => setView("scan")}>
+              <div className="icon-wrap"><Search size={18} color="#83715B" /></div>
+              <div>
+                <h3>Scan barcode</h3>
+                <p>Use your camera to scan the barcode on the back cover</p>
+              </div>
+            </button>
             <button className="choice-card" onClick={() => setView("isbnEntry")}>
               <div className="icon-wrap"><Pencil size={18} color="#83715B" /></div>
               <div>
@@ -986,6 +1075,21 @@ export default function App() {
               </div>
             </button>
           </div>
+        </div>
+      )}
+
+      {/* CAMERA SCAN */}
+      {view === "scan" && (
+        <div className="overlay">
+          <div className="overlay-header">
+            <button className="back-btn" onClick={() => setView("addChoice")}><ChevronLeft size={20} /></button>
+            <h2>Scan barcode</h2>
+          </div>
+          <CameraScanner
+            onDetected={handleDetected}
+            onManualFallback={() => setView("isbnEntry")}
+            onClose={() => setView("addChoice")}
+          />
         </div>
       )}
 

@@ -11,21 +11,45 @@ import {
    The anon/public key is safe to expose in client code as long as
    Row Level Security (RLS) policies on your table are configured the
    way you want (see the SQL + notes provided alongside this file). */
-const SUPABASE_URL = "https://tckzajwiyhwvpietvavc.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_KKsXNjm4sVsoypZXGyTR4A_C9WIezDF";
+const SUPABASE_URL = "https://tckzajwiyhwvpietvavc.supabase.co".trim();
+const SUPABASE_ANON_KEY = "sb_publishable_KKsXNjm4sVsoypZXGyTR4A_C9WIezDF".trim();
 
-const SB_CONFIGURED = !!SUPABASE_URL && !!SUPABASE_ANON_KEY && SUPABASE_URL.startsWith("https://");
+const SB_CONFIGURED =
+  !SUPABASE_URL.includes("YOUR-PROJECT-REF") &&
+  !SUPABASE_ANON_KEY.includes("YOUR-SUPABASE-ANON-KEY");
+
+// Validate the URL once, up front, so a malformed/edited URL fails with a
+// clear message instead of a cryptic browser error deep inside fetch().
+let SB_URL_ERROR = "";
+if (SB_CONFIGURED) {
+  try {
+    // eslint-disable-next-line no-new
+    new URL(SUPABASE_URL);
+  } catch (e) {
+    SB_URL_ERROR = `SUPABASE_URL doesn't look like a valid URL: "${SUPABASE_URL}"`;
+  }
+}
 
 async function sbFetch(path, options = {}) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1${path}`, {
-    ...options,
-    headers: {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-  });
+  if (SB_URL_ERROR) throw new Error(SB_URL_ERROR);
+  let res;
+  try {
+    res = await fetch(`${SUPABASE_URL}/rest/v1${path}`, {
+      ...options,
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+    });
+  } catch (e) {
+    // Surface the failing URL/method so a bad key or URL is obvious
+    // instead of a generic "did not match the expected pattern" error.
+    throw new Error(
+      `Network request to Supabase failed (${options.method || "GET"} ${path}): ${e.message || e}`
+    );
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`Supabase ${options.method || "GET"} ${path} failed: ${res.status} ${text}`);
@@ -678,7 +702,7 @@ export default function App() {
   const [authorFilter, setAuthorFilter] = useState("");
   const [genreFilter, setGenreFilter] = useState("All");
   const [formatFilter, setFormatFilter] = useState("All");
-  const [sortBy, setSortBy] = useState("dateAdded"); // dateAdded | titleAsc | authorAsc
+  const [sortBy, setSortBy] = useState("titleAsc"); // dateAdded | titleAsc | authorAsc
 
   const [dbError, setDbError] = useState("");
 

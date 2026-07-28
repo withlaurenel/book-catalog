@@ -954,9 +954,9 @@ export default function App() {
           display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding: 6px 16px 24px;
         }
         .shelf-section-header {
-          position: sticky; top: 0; z-index: 2; margin: 0 16px; padding: 5px 10px;
-          font-family: 'Inter', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 0.06em;
-          color: #FBFAF6; background: #6B7A47; border-radius: 6px; width: fit-content;
+          margin: 0 16px; padding: 4px 0;
+          font-family: 'Tobias', serif; font-weight: 400; font-size: 20px;
+          color: #6B7A47;
         }
         .book-card { cursor: pointer; text-align: left; }
         .dot { width: 6px; height: 6px; border-radius: 50%; }

@@ -54,9 +54,17 @@ async function sbFetch(path, options = {}) {
     const text = await res.text().catch(() => "");
     throw new Error(`Supabase ${options.method || "GET"} ${path} failed: ${res.status} ${text}`);
   }
-  // 204 No Content (deletes) has no body
+  // Empty responses (e.g. Supabase's default POST/DELETE with no
+  // representation requested) have no body — parsing them as JSON
+  // throws on some browsers (notably iOS Safari), so read as text first.
   if (res.status === 204) return null;
-  return res.json();
+  const bodyText = await res.text().catch(() => "");
+  if (!bodyText) return null;
+  try {
+    return JSON.parse(bodyText);
+  } catch (e) {
+    return null;
+  }
 }
 
 /* map a JS book object <-> a `books` table row (snake_case columns) */

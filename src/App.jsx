@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { BrowserMultiFormatReader } from "@zxing/browser";
+// (camera scanning library omitted in this preview build — unsupported by Claude's artifact sandbox; present in the real deployable file)
 import {
   Search, Plus, X, Star, ChevronLeft, Loader2,
   BookOpen, User, Tag as TagIcon, Pencil, Trash2, Check,
@@ -375,7 +375,9 @@ function CameraScanner({ onDetected, onManualFallback, onClose }) {
 
     (async () => {
       try {
-        const reader = new BrowserMultiFormatReader();
+        throw new Error("PREVIEW_ONLY_NO_CAMERA_LIB");
+        // eslint-disable-next-line no-unreachable
+        const reader = null;
         readerRef.current = reader;
 
         const controls = await reader.decodeFromConstraints(
@@ -930,9 +932,6 @@ export default function App() {
           display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding: 6px 16px 24px;
         }
         .book-card { cursor: pointer; text-align: left; }
-        .book-card .title { font-family: 'Tobias', serif; font-size: 14px; font-weight: 600; margin-top: 6px; line-height: 1.2; color: #6B7A47; }
-        .book-card .author { font-size: 11px; color: #8A7C64; margin-top: 1px; }
-        .book-card .badges { display: flex; gap: 4px; margin-top: 4px; align-items: center; flex-wrap: wrap; }
         .dot { width: 6px; height: 6px; border-radius: 50%; }
         .dot.read { background: #83715B; }
         .dot.reading { background: #C7908E; }
@@ -1147,10 +1146,8 @@ export default function App() {
 
           <div className="shelf-grid">
             {filtered.map((b) => (
-              <button key={b.id} className="book-card" onClick={() => { setSelectedId(b.id); setView("detail"); }}>
+              <button key={b.id} className="book-card" onClick={() => { setSelectedId(b.id); setView("detail"); }} title={`${b.title} — ${b.author}`}>
                 <BookCover book={b} />
-                <div className="title">{b.title}</div>
-                <div className="author">{b.author}</div>
               </button>
             ))}
           </div>
